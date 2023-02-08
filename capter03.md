@@ -41,15 +41,15 @@ void multstore(long x, long y, long *dest)
 ```s
 multstore:
     # 将rbx寄存器内容压入用户栈
-    pushq    %rbx
-    # 将rbx寄存器内容送至rdx
-    movq    %rdx, %rbx
+    pushq %rbx
+    # 将rdx寄存器内容送至rbx
+    movq %rdx, %rbx
     # 调用mult2函数
-    call    mult2@PLT
+    call mult2@PLT
     # 将rbx保存内容对应地址的内容送入rax寄存器
-    movq    %rax, (%rbx)
+    movq %rax, (%rbx)
     # 将rbx寄存器内容弹出
-    popq    %rbx
+    popq %rbx
     # 返回用户栈内容return
     ret
 ```
@@ -124,4 +124,73 @@ long mult2(long a, long b)
 
 ### ATT与Intel
 
+ATT也称为AT&T，是贝尔实验室格式汇编代码格式，是GCC等常用工具的默认格式，而来自Intel公司的汇编格式则是Intel。
 
+如使用`gcc -Og -S -masm=intel mstore.c`可以得到Intel格式的汇编代码：
+
+```s
+multstore:
+    endbr64
+    push rbx
+    mov rbx, rdx
+    call mult2@PLT
+    mov QWORD PTR [rbx], rax
+    pop rbx
+    ret
+```
+
+不同|Intel|ATT
+:--:|:--:|:--:
+省略指示大小后缀|push|pushq
+省略寄存器前缀|rbx|%rbx
+描述内存位置方式不同|QWORD PTR [rbx]|(%rbx)
+操作数顺序相反|mov rbx, rdx|movq %rdx, %rbx
+
+## 数据格式
+
+最开始计算机系统是16位的，所以将16位称为一个字，32位就是双字，64位就是四字，标准int使用32位保存，指针为64位（因为机器是64位的）。
+
+C声明|Intel数据类型|汇编代码后缀|字节大小
+:--:|:----------:|:--------:|:----:
+char|字节|b|1
+short|字|w|2
+int|双字|l|4
+long|四字|q|8
+char*|四字|q|8
+float|单精度|s|4
+double|双精度|l|8
+
+GCC生成的汇编代码指令都有一个指定操作数字长的后缀，如movb、movw、movl、movq。
+
+C程序中可以使用long double来指定10字节浮点格式进行全套浮点运算，但是不建议，因为不能移植且实现硬件低效。
+
+## 访问信息
+
+一个x86-64的中央处理单元CPU包含一组16个存储64位值的通用寄存器用来存储数据和指针。名字都以%r开头。
+
++ 8086：八个16位寄存器。
++ IA32：八个32位寄存器。
++ x86-64：八个64位寄存器。添加八个新寄存器，%r8~%r15。
+
+作用|低8位|低16位|低32位|全64位
+:-:|:---:|:---:|:----:|:---:
+返回值|al%|ax%|eax%|rax%
+保存被调用者|%bl|%bx|%ebx|%rbx
+第四个参数|%cl|cx%|ecx%|%rcx
+第三个参数|%dl|%dx|%edx|%rdx
+第二个参数|%sil|%si|%esi|%rsi
+第一个参数|%dil|%di|%edi|%rdi
+保存被调用者|%bpl|%bp|%ebp|%rbp
+栈指针|%spl|%sp|%esp|%rsp
+第五个参数|%r8b|%r8w|%r8d|%r8
+第六个参数|%r9b|%r9w|%r9d|%r9
+保存调用者|%r10b|%r10w|%r10d|%r10
+保存调用者|%r11b|%r11w|%r11d|%r11
+保存被调用者|%r12b|%r12w|%r12d|%r12
+保存被调用者|%r13b|%r13w|%r13d|%r13
+保存被调用者|%r14b|%r14w|%r14d|%r14
+保存被调用者|%r15b|%r15w|%r15d|%r15
+
+栈指针用于保存运行时栈的结束位置，其他寄存器应用会更灵活。
+
+### 操作数指示符
