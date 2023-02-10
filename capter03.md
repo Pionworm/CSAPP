@@ -41,15 +41,15 @@ void multstore(long x, long y, long *dest)
 ```s
 multstore:
     # 将rbx寄存器内容压入用户栈
-    pushq %rbx
+    pushq   %rbx
     # 将rdx寄存器内容送至rbx
-    movq %rdx, %rbx
+    movq    %rdx, %rbx
     # 调用mult2函数
-    call mult2@PLT
+    call    mult2@PLT
     # 将rbx保存内容对应地址的内容送入rax寄存器
-    movq %rax, (%rbx)
+    movq    %rax, (%rbx)
     # 将rbx寄存器内容弹出
-    popq %rbx
+    popq    %rbx
     # 返回用户栈内容return
     ret
 ```
@@ -130,12 +130,11 @@ ATT也称为AT&T，是贝尔实验室格式汇编代码格式，是GCC等常用�
 
 ```s
 multstore:
-    endbr64
-    push rbx
-    mov rbx, rdx
-    call mult2@PLT
-    mov QWORD PTR [rbx], rax
-    pop rbx
+    push    rbx
+    mov    rbx, rdx
+    call    mult2@PLT
+    mov    QWORD PTR [rbx], rax
+    pop    rbx
     ret
 ```
 
@@ -209,4 +208,243 @@ C程序中可以使用long double来指定10字节浮点格式进行全套浮点
 寄存器寻址|寄存器|rx|R[rx]|%rax
 绝对寻址|存储器|x|M[x]|0x108
 间接寻址|存储器|(rx)|M\[R[rx]]|(%rax)
-基址选址|存储器|M[R[rx]+y]
+基址选址|存储器|x(ry)|M[x+R[ry]]|4(%rax)
+变址选址|存储器|(rx,ry)|M[R[rx]+R[ry]]|(%rax,%rdx)
+变址选址|存储器|x(ry,rz)|M[x+R[ry]+R[rz]]|4(%rax,%rdx)
+比例变址寻址|存储器|(,rx,y)|M[R[rx]*y]|(,%rax,4)
+比例变址寻址|存储器|x(,ry,z)|M[x+R[ry]*z]|4(,%rax,4)
+比例变址寻址|存储器|(rx,ry,z)|M[R[rx]+R[ry]*z]|(%rax,%rbx,4)
+比例变址寻址|存储器|x(ry,rz,s)|M[x+R[ry]+R[rz]*s]|6(%rax,%rbx,4)
+
+### 数据传送指令
+
+指令|效果|描述
+:-:|:--:|:-:
+mov a, b|b<-a|传送
+movb||传输字节
+movw||传输字
+movl||传输双字
+movq||传输四字
+movabsq||传输绝对四字
+
++ MOV指令只会更新目的操作数指定寄存器字节或内存位置。唯一例外是movl指令以寄存器作为目的时，会将寄存器高4位置0，这是惯例。
++ A可以是立即数、寄存器、内存地址，B可以是寄存器、内存地址。
++ x86-64限制了AB不能都指向内存地址。所以从内存到内存应该以寄存器为中介。
++ movq指令和movabsq都是将四字立即数作为原操作数。但是movq只能使用32位补码立即数，然后符号扩展到64位；而movabsq能以任何64位立即数，但是目的地址只能为寄存器。
+
+操作数类型|实例
+:------:|:--:
+立即数-寄存器|movl $0x4080,%eax
+立即数-内存|movb $-16,(%rsp)
+寄存器-寄存器|movw %ax,%bx
+内存-寄存器|movb (%rdi,%rcx),%al
+寄存器-内存|movq %rax,-12(%rbp)
+
+当较小的数据复制到较大目的时，有零扩展MOVZ和符号扩展MOVS两种处理方式，指令最后有两个字符，第一个字符为源大小，第二个字符为目的大小：
+
+指令|效果|描述
+:-:|:--:|:-:
+movz a, b|b<-zero(a)|零扩展传输
+movzbw||传输字节到字
+movzbl||传输字节到双字
+movzwl||传输字到双字
+movzbq||传输字节到四字
+movzwq||传输字到四字
+
++ 没有movzlq，但是可以通过movl指令来实现，这是因为默认会将高4位置0。
++ A可以是寄存器或内存，B只能是寄存器。
+
+指令|效果|描述
+:-:|:--:|:-:
+movs a, b|b<-signal(a)|符号扩展传输
+movsbw||传输字节到字
+movsbl||传输字节到双字
+movswl||传输字到双字
+movsbq||传输字节到四字
+movswq||传输字到四字
+movslq||传输双字到四字
+cltq|%rax<-signal(%eax)|寄存器自填充四字
+
++ A可以是寄存器或内存，B只能是寄存器。
++ cltq指令没有操作数，只作用于%eax到%rax。就是movslq %eax,%rax功能一致。
+
+编写exchange.c文件：
+
+```c
+long exchange(long *xp, long y)
+{
+    long x = *xp;
+    *xp = y;
+    return x;
+}
+```
+
+`gcc -Og -S exchange.c`编译：
+
+```s
+# xp存储%rdi，y存储在%rsi
+exchange:
+    # 读出xp并存储到rax
+    movq    (%rdi), %rax
+    # 将%rsi值传送到rdi中
+    movq    %rsi, (%rdi)
+    # 存储值在寄存器低位返回
+    ret
+```
+
+### 栈操作指令
+
+指令|效果|描述
+:-:|:--:|:-:
+pushq a|R[%rsp]<-R[%rsp]-8</br>M[R[%rsp]]<-a|压入栈
+popq a|a<-M[R[%rsp]]</br>R[%rsp]<-R[%rsp]+8|弹出栈
+
++ x86-64中，程序栈在内存中，且向下增长，栈顶元素在低位，栈底元素在高位，栈底地址不变，所以栈操作不用担心越界问题。
++ %rsp保存栈顶指针。
++ 默认都是对一个机器字长的数据进行操作。
+
+所以pushq %rbp指令等价于subq $8, %rsp，movq %rbp, (%rsp)。
+
+popq %rax指令等价于movq (%rsp), %rax，addq $8, %rsp。
+
+## 算术逻辑操作
+
+### 加载有效地址
+
+指令|效果|描述
+:-:|:--:|:-:
+lea a, b|b<-&a|加载有效地址
+leaw|
+leal|
+leaq|
+
++ 实际是mov指令的变形。主要为了计算偏移地址。
++ 从内存读数据并计算传输到寄存器。目的只能是寄存器。
++ 实际上并没有引用内存，而是将地址写入目的操作数。
+
+操作数|MOV指令|LEA指令
+:-:|:----:|:----:
+变量|取值|取地址
+[变量]|取值|取地址
+寄存器|取值|取地址
+[寄存器]|取地址|取值
+
+### 一元操作
+
+指令|效果|描述
+:-:|:--:|:-:
+inc a|a<-a+1|自增1
+incb|
+incw|
+incl|
+incq|
+dec a|a<-a-1|自减1
+decb|
+decw|
+decl|
+decq|
+neg a|a<- -a|取负
+negb|
+negw|
+negl|
+negq|
+not a|a<-!a|取反
+notb|
+notw|
+notl|
+notq|
+
++ 唯一操作数既是源又是目的。
++ 操作数可以是寄存器也可以是内存。
+
+### 二元操作
+
+指令|效果|描述
+:-:|:--:|:-:
+add a, b|b<-b+a|加
+addb|
+addw|
+addl|
+addq|
+sub a, b|b<-b-a|减
+subb|
+subw|
+subl|
+subq|
+imul a, b|b<-b*a|乘
+imulb|
+imulw|
+imull|
+imulq|
+xor a, b|b<-b^a|异或
+xorb|
+xorw|
+xorl|
+xorq|
+or a, b|b<-b\|a|或
+orb|
+orw|
+orl|
+orq|
+and a, b|b<-b&a|与
+andb|
+andw|
+andl|
+andq|
+
++ 第二个操作数既是源又是目的。
++ 第一个操作数可以是立即数、寄存器、内存。
++ 第二个操作数可以是寄存器、内存。当第二个操作数为内存时必须先从内存读出再写回。
+
+### 移位操作
+
+指令|效果|描述
+:-:|:--:|:-:
+sal a, b|b<-b<<a|左移
+salb|
+salw|
+sall|
+salq|
+shl a, b|b<-b<<a|左移
+shlb|
+shlw|
+shll|
+shlq|
+sar a, b|b<-b>>a|算术左移
+sarb|
+sarw|
+sarl|
+sarq|
+shr a, b|b<-b>>a|逻辑左移
+shrb|
+shrw|
+shrl|
+shrq|
+
++ 第一个操作数为移位量。可以是立即数或存放在指定寄存器%cl中。
++ 移位量由%cl低m位决定，高位忽略，如%cl的值为0xFF时，指令salb移位7位，salw移位15位，sall移位31位，salq移位63位。
++ 第二个操作数是要移位数据。可以是寄存器或内存。
++ 左移指令SAL和SHL作用一样。
+
+编写shift_left4_rightn.c：
+
+```c
+long shift_left4_rightn(long x, long n)
+{
+    x <<= 4;
+    x >>= n;
+    return x;
+}
+```
+
+`gcc -Og -S shift_left4_rightn.c`汇编：
+
+```s
+# x在%rdi中，n在%rsi中
+shift_left4_rightn:
+    movq    %rdi, %rax
+    salq    $4, %rax
+    movl    %esi, %ecx
+    sarq    %cl, %rax
+    ret
+```
