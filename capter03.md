@@ -131,10 +131,10 @@ ATT也称为AT&T，是贝尔实验室格式汇编代码格式，是GCC等常用�
 ```s
 multstore:
     push    rbx
-    mov    rbx, rdx
+    mov     rbx, rdx
     call    mult2@PLT
-    mov    QWORD PTR [rbx], rax
-    pop    rbx
+    mov     QWORD PTR [rbx], rax
+    pop     rbx
     ret
 ```
 
@@ -159,7 +159,14 @@ char*|四字|q|8
 float|单精度|s|4
 double|双精度|l|8
 
-GCC生成的汇编代码指令都有一个指定操作数字长的后缀，如movb、movw、movl、movq。
+GCC生成的汇编代码指令都有一个指定操作数字长的后缀，如movb、movw、movl、movq：
+
+字符|字长
+:-:|:-:
+b|字节
+w|字
+l|双字
+q|四字
 
 C程序中可以使用long double来指定10字节浮点格式进行全套浮点运算，但是不建议，因为不能移植且实现硬件低效。
 
@@ -221,15 +228,15 @@ C程序中可以使用long double来指定10字节浮点格式进行全套浮点
 指令|效果|描述
 :-:|:--:|:-:
 mov a, b|b<-a|传送
-movb||传输字节
-movw||传输字
-movl||传输双字
-movq||传输四字
+movb|
+movw|
+movl|
+movq|
 movabsq||传输绝对四字
 
-+ MOV指令只会更新目的操作数指定寄存器字节或内存位置。唯一例外是movl指令以寄存器作为目的时，会将寄存器高4位置0，这是惯例。
-+ A可以是立即数、寄存器、内存地址，B可以是寄存器、内存地址。
-+ x86-64限制了AB不能都指向内存地址。所以从内存到内存应该以寄存器为中介。
++ mov指令只会更新目的操作数指定寄存器字节或内存位置。唯一例外是movl指令以寄存器作为目的时，会将寄存器高4位置0，这是惯例。
++ a可以是立即数、寄存器、内存地址，b可以是寄存器、内存地址。
++ x86-64限制了ab不能都指向内存地址。所以从内存到内存应该以寄存器为中介。
 + movq指令和movabsq都是将四字立即数作为原操作数。但是movq只能使用32位补码立即数，然后符号扩展到64位；而movabsq能以任何64位立即数，但是目的地址只能为寄存器。
 
 操作数类型|实例
@@ -245,27 +252,27 @@ movabsq||传输绝对四字
 指令|效果|描述
 :-:|:--:|:-:
 movz a, b|b<-zero(a)|零扩展传输
-movzbw||传输字节到字
-movzbl||传输字节到双字
-movzwl||传输字到双字
-movzbq||传输字节到四字
-movzwq||传输字到四字
+movzbw|
+movzbl|
+movzwl|
+movzbq|
+movzwq|
 
 + 没有movzlq，但是可以通过movl指令来实现，这是因为默认会将高4位置0。
-+ A可以是寄存器或内存，B只能是寄存器。
++ a可以是寄存器或内存，b只能是寄存器。
 
 指令|效果|描述
 :-:|:--:|:-:
 movs a, b|b<-signal(a)|符号扩展传输
-movsbw||传输字节到字
-movsbl||传输字节到双字
-movswl||传输字到双字
-movsbq||传输字节到四字
-movswq||传输字到四字
-movslq||传输双字到四字
+movsbw|
+movsbl|
+movswl|
+movsbq|
+movswq|
+movslq|
 cltq|%rax<-signal(%eax)|寄存器自填充四字
 
-+ A可以是寄存器或内存，B只能是寄存器。
++ a可以是寄存器或内存，b只能是寄存器。
 + cltq指令没有操作数，只作用于%eax到%rax。就是movslq %eax,%rax功能一致。
 
 编写exchange.c文件：
@@ -448,3 +455,141 @@ shift_left4_rightn:
     sarq    %cl, %rax
     ret
 ```
+
+### 特殊算术操作
+
+指令|效果|描述
+:-:|:--:|:-:
+imulq a|[R[%rdx]:R[%rax]]<-a*R[%rax]|有符号全乘法
+mulq a|[R[%rdx]:R[%rax]]<-a*R[%rax]|无符号全乘法
+clto|[R[%rdx]:R[%rax]<-singal[R[%rax]]|符号拓展为8位
+
++ imulq a, b就是两个64位操作数相乘乘积为64位的乘法指令。由于保存到b中，所以不能完全保存结果。
++ 而imulq a和mulq a使用单操作数，分别实现无符号和补码乘法，使用%rdx保存高64位，%rax保存低64位，从而完全保存了结果。
+
+新建一个store_uprod.c：
+
+```c
+// int类型拓展，可以提供64位的值
+#include <inttypes.h>
+
+// 由于这个标准没有提供128位的标准，所以依赖GCC提供的128位整数支持
+typedef unsigned __int128 uint128_t;
+
+void store_uprod(uint128_t *dest, uint64_t x, uint64_t y)
+{
+    *dest = x * (uint128_t)y;
+}
+```
+
+`gcc -Og -S store_uprod.c`汇编：
+
+```s
+# x在%rsi中，y在%rdx中
+store_uprod:
+    # 将x移动到%rax中
+    movq    %rsi, %rax
+    # %rdx*%rax
+    mulq    %rdx
+    # %rdi保存dest指针
+    # 将%rax保存的低位移动到%rdi中
+    movq    %rax, (%rdi)
+    # 将%rdx保存的高位移动到%rdi的高八字节中
+    movq    %rdx, 8(%rdi)
+    ret
+```
+
+指令|效果|描述
+:-:|:--:|:-:
+idivq a|R[%rdx]<-[R[%rdx]:R[%rax]]mod a</br>R[%rax]<-[R[%rdx]:R[%rax]]/a|有符号除法
+divq a|R[%rdx]<-[R[%rdx]:R[%rax]]mod a</br>R[%rax]<-[R[%rdx]:R[%rax]]/a|无符号除法
+
++ 如果被除数是128位，除法将寄存器%rdx作为被除数的高64位，%rax作为被除数的低64位，除数作为指令的操作数给出，将商存储在%rax中，将余数存储在%rdx中。
++ 如果被除数是64位，除数也往往是64位，应该存放在%rax中，%rdx的位数应该置为%rax的符号位，所以这个操作就需要使用cqto（如果是Intel就是cqo）指令完成，将%rax的符号位也扩充到%rdx中。
+
+新建一个remdiv.c：
+
+```c
+void remdiv(long x, long y, long *qp, long *rp)
+{
+    long q = x / y;
+    long r = x % y;
+    *qp = q;
+    *rp = r;
+}
+```
+
+`gcc -Og -S remdiv.c`汇编：
+
+```s
+# x在%rdi，y在%rsi，qp在%rdx，rp在%rcx
+remdiv:
+    # 将x送到%rax作为被除数
+    movq    %rdi, %rax
+    # 由于除法操作需要使用%rdx保存余数，所以要转移pq到寄存器中
+    movq    %rdx, %r8
+    # %rax拓展到%rdx
+    cqto
+    # 将[%rdx:%rad]除以%rsi，即x/y
+    # 此时%rax为商，%rdx为余数
+    idivq   %rsi
+    movq    %rax, (%r8)
+    movq    %rdx, (%rcx)
+    ret
+```
+
+## 控制
+
+### 状态码
+
+CPU还维护状态码寄存器，用于描述最近操作的属性，可以通过这个来进行条件控制。
+
++ CF：进位标志。是否进位。检查无符号操作溢出。
++ ZF：零标志。是否为0。检查结果是否为0。
++ SF：符号标志。结果符号位。检查是否得到了负数。
++ OF：溢出标志。补码是否溢出。检查补码数是否溢出。
+
+当计算t=a+b时：
+
++ CF：(unsigned) t < (unsigned) a。无符号溢出。
++ ZF：(t == 0)。结果零。
++ SF：（t < 0）。负数。
++ OF：(a < 0 == b < 0) && (t < 0 != a < 0)。有符号溢出。
+
+算术和逻辑运算指令会改变条件码，还有两种命令会改变状态码而不改变其他寄存器内容。
+
+指令|效果|描述
+:-:|:--:|:-:
+cmp a, b|b-a|比较大小
+cmpb|
+cmpw|
+cmpl|
+cmpq|
+test a, b|a&b|测试
+testb|
+testw|
+testl|
+testq|
+
++ cmp指令行为跟sub指令一样，根据两个操作数之差设置状态码但是不设置其他寄存器。
++ test指令行为跟and指令一样，对两个操作数进行与操作设置状态码但是不设置其他寄存器。用来判断两个操作数是否一致，或者一个操作数是掩码来指示哪些位需要被测试。
+
+### 访问状态码
+
+状态码不直接读取：
+
+1. 根据状态码组合，将一个字节设置为0或1。
+2. 根据状态跳转到程序其他部分。
+3. 根据条件判断是否传输数据。
+
+指令|同义名|效果|设置条件
+:-:|:---:|:-:|:------:
+sete a|setz|a<ZF|相等/零
+setne a|setnz|a<-~ZF|不等/非零
+sets a||a<-SF|负数
+setns a||a<-~ZF|非负
+setne a|setnz|a<- -ZF|不等/非零
+setne a|setnz|a<- -ZF|不等/非零
+
+现在经济下行的根本原因是什么 - nicolas ciang的文章 - 知乎
+https://zhuanlan.zhihu.com/p/603860157

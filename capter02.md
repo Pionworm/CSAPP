@@ -34,9 +34,83 @@
 
 通过`man ascii`命令可以得到ASCII字符码表。
 
+定义byte_pointer.c：
+
+```c
+#include <stdio.h>
+
+typedef unsigned char *byte_pointer;
+
+void show_bytes(byte_pointer start, size_t len)
+{
+    size_t i;
+    for (i = 0; i < len; i++)
+        printf("%.2x", start[i]);
+    printf("\n");
+}
+
+void show_int(int x)
+{
+    show_bytes((byte_pointer)&x, sizeof(int));
+}
+
+void show_float(float x)
+{
+    show_bytes((byte_pointer)&x, sizeof(float));
+}
+
+void show_pointer(void *x)
+{
+    show_bytes((byte_pointer)&x, sizeof(void *));
+}
+```
+
+新建test_show_bytes.c：
+
+```c
+#include "./byte_pointer.c"
+
+void test_show_bytes(int val)
+{
+    int ival = val;
+    float fval = (float)ival;
+    int *pval = &ival;
+    show_int(ival);
+    show_float(fval);
+    show_pointer(pval);
+}
+
+int main()
+{
+    test_show_bytes(12345);
+}
+```
+
+运行`gcc test_show_bytes.c`、`./a.o`：
+
+```txt
+39300000
+00e44046
+388a36faff7f0000
+```
+
 ### 字符串
 
 字符串是一个以null为结尾的字符数组，以标准编码表示（如ASCII码），所以字符码在不同平台都能得到同样的数据，所以文本数据比二进制数据更具备平台独立性。
+
+新建一个test_char_bytes.c：
+
+```c
+#include <string.h>
+#include "./byte_pointer.c"
+
+int main() {
+    const char *s = "abcdef";
+    show_bytes((byte_pointer) s, strlen(s));
+}
+```
+
+运行得`gcc test_char_bytes.c`、`./a.o`：616263646566。
 
 Unicode标准对ASCII标准进行推广进行兼容。
 
