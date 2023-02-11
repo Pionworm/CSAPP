@@ -590,6 +590,3 @@ sets a||a<-SF|负数
 setns a||a<-~ZF|非负
 setne a|setnz|a<- -ZF|不等/非零
 setne a|setnz|a<- -ZF|不等/非零
-
-现在经济下行的根本原因是什么 - nicolas ciang的文章 - 知乎
-https://zhuanlan.zhihu.com/p/603860157
