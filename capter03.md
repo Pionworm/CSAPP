@@ -588,5 +588,16 @@ sete a|setz|a<ZF|相等/零
 setne a|setnz|a<-~ZF|不等/非零
 sets a||a<-SF|负数
 setns a||a<-~ZF|非负
-setne a|setnz|a<- -ZF|不等/非零
-setne a|setnz|a<- -ZF|不等/非零
+setg a|setnle|a<-~(SF^OF)&~ZF|有符号大于
+setg a|setnle|a<-~(SF^OF)&~ZF|有符号大于
+setge a|setnl|a<-~(SF^OF)|有符号大于等于
+setl a|setnge|a<-SF^OF|有符号小于
+setle a|setng|a<-(SF^OF)\|ZF|有符号小于等于
+seta a|setnbe|a<-~CF&~ZF|无符号大于
+setae a|setnb|a<-~CF|无符号大于等于
+setb a|setnae|D<-CF|无符号小于
+setbe a|setna|a<-CF\|ZF|无符号小于等于
+
++ set指令通过t=a-b来实现。
++ 对于sete，当a=b时，t=a-b=0，此时ZF=0。
++ 对于setl，若没有溢出则OF=0，
