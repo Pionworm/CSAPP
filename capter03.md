@@ -600,4 +600,126 @@ setbe a|setna|a<-CF\|ZF|无符号小于等于
 
 + set指令通过t=a-b来实现。
 + 对于sete，当a=b时，t=a-b=0，此时ZF=0。
-+ 对于setl，若没有溢出则OF=0，
++ 对于setl，若没有溢出则OF=0，a-b<0，SF=1，a-b>0，SF=0，若有溢出则OF=1，a-b>0即负溢出SF=0，则a<b，a-b<0时正溢出SF=1，则a>b，从而OF=1时OF=0时a<b。
+
+### 跳转指令
+
+跳转指令能改变顺序执行代码的顺序，跳转目的地往往需要用标记a指明跳转目的地。
+
++ 直接跳转：跳转目标在指令编码中。
++ 间接跳转：跳转目标在寄存器或内存位置读出。
+
+指令|同义名|跳转条件|描述
+:-:|:---:|:-----:|:-:
+jmp a||1|直接跳转
+jmp *a||1|间接跳转
+je a|jz|ZF|相等/零
+jne a|jnz|~ZF|不等/非零
+js a||SF|负数
+jns a||~SF|非负
+jg a|jnle|~(SF^OF)&~ZF|有符号大于
+jge a|jnl|~(SF^OF)|有符号大于等于
+jl a|jnge|SF^OF|有符号小于
+jle a|jng|(SF^OF)\|ZF|有符号小于等于
+ja a|jnbe|~CF&~ZF|无符号大于
+jae a|jnb|~CF|无符号大于等于
+jb a|jnae|CF|无符号小于
+jbe|jna|CF\|ZF|无符号小于等于
+
+指令寻址有不同寻址方式。最常用的是PC相对选址，即目标指令地址和当前指令地址的后一条指令地址之差在当前指令中给出，然后就是绝对地址。
+
+### 条件控制
+
+最常用的就是使用有条件跳转和无条件跳转的条件控制来实现条件分支。
+
+编写一个计算差绝对值的C语言文件。if-else版本absdiff_se.c：
+
+```c
+long lt_cnt = 0;
+long ge_cnt = 0;
+
+long absdiff_se(long x, long y)
+{
+    long result;
+    if (x < y)
+    {
+        lt_cnt++;
+        result = y - x;
+    }
+    else
+    {
+        ge_cnt++;
+        result = x - y;
+    }
+    return result;
+}
+```
+
+然后调用`gcc -Og -S absdiff_se.c`：
+
+```s
+absdiff_se:
+    cmpq    %rsi, %rdi
+    jge .L2
+    addq    $1, lt_cnt(%rip)
+    movq    %rsi, %rax
+    subq    %rdi, %rax
+    ret
+.L2:
+    addq    $1, ge_cnt(%rip)
+    movq    %rdi, %rax
+    subq    %rsi, %rax
+    ret
+```
+
+如果使用汇编，然后再将汇编转为C语言会发现将其转换为了goto语句gotodiff_se.c：
+
+```c
+long lt_cnt = 0;
+long ge_cnt = 0;
+
+long gotodiff_se(long x, long y)
+{
+    long result;
+    if (x >= y)
+        goto x_ge_y;
+    lt_cnt++;
+    result = y - x;
+    return result;
+x_ge_y:
+    ge_cnt++;
+    result = x - y;
+    return result;
+}
+```
+
+所以对于C语言的if-else语句：
+
+```txt
+if 测试条件
+    成功语句
+else
+    失败语句
+后续语句
+```
+
+如果将其转换为汇编语句，则会使用类似goto语句的控制流进行实现：
+
+```txt
+    if(!测试条件)
+        goto 失败标签
+    成功语句
+    goto 后续标签
+失败标签:
+    失败语句
+后续标签:
+    后续语句
+```
+
+### 条件传送
+
+可以使用数据控制的条件传送实现条件分支。
+
+默认使用控制的if-else语句沿着执行路径执行，当不满足条件再进行分支，虽然简单但是低效。
+
+计算一个条件的两种结果，根据条件是否满足选取一个。
