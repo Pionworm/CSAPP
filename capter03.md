@@ -722,4 +722,51 @@ else
 
 默认使用控制的if-else语句沿着执行路径执行，当不满足条件再进行分支，虽然简单但是低效。
 
-计算一个条件的两种结果，根据条件是否满足选取一个。
+计算一个条件的两种结果，根据条件是否满足选取一个。只有在部分受限的情况这种策略才有效，可以只用条件传送指令来实现。
+
+此时给定一个absdiff.c，简单返回计算差值，而不改变全局变量：
+
+```c
+long absdiff(long x, long y)
+{
+    long result;
+    if (x < y)
+        result = y - x;
+    else
+        result = x - y;
+    return result;
+}
+```
+
+`gcc -Og -S absdiff.c`：
+
+```s
+absdiff:
+    cmpq    %rsi, %rdi
+    jge .L2
+    movq    %rsi, %rax
+    subq    %rdi, %rax
+    ret
+.L2:
+    movq    %rdi, %rax
+    subq    %rsi, %rax
+    ret
+```
+
+与cmovdiff有相同的形式：
+
+```c
+long cmovdiff(long x, long y)
+{
+    long rval = y - x;
+    long eval = x - y;
+    long ntest = x >= y;
+    if (ntest)
+        rval = eval;
+    return rval;
+}
+```
+
+计算两个数值的大小，除了相等的情况，则必有一个正一个负，然后判断xy大小关系，最后将正数值返回。
+
+### 性能比较
